@@ -28,8 +28,8 @@ mavsdk::Offboard::PositionNedYaw get_current_position_ned_yaw(mavsdk::Telemetry&
     float yaw = std::round(yaw_origin.heading_deg*100)/100;     // round对小数点后1位进行四舍五入
 
     // 输出无人机当前的NED坐标和偏航角
-    std::cout << "--Origin:\n"
-              << "\tN:" << ned_origin.position.north_m<<"\t"
+    std::cout << "--Now:"
+              << " N:" << ned_origin.position.north_m<<"\t"
               << "E:" << ned_origin.position.east_m<<"\t"
               << "D:" << ned_origin.position.down_m<<"\t"
               << "Y:" << yaw << std::endl;
@@ -70,13 +70,22 @@ bool offb_ctrl_ned(mavsdk::Offboard& offboard, mavsdk::Telemetry& telemetry)
         std::cerr << "Offboard start failed: " << offboard_result << '\n';
         return false;
     }
-    auto stay0=get_current_position_ned_yaw(telemetry);
-    offboard.set_position_ned(stay0);
-    sleep_for(seconds(1));
     std::cout << "--offboard started\n";
-    sleep_for(seconds(10));
+    Offboard::PositionNedYaw stay0=get_current_position_ned_yaw(telemetry);
+    Offboard::PositionNedYaw position_target[]{
+        {0,0,-3,0},
+        {3,0,0,0}
+    };   
+    for(int i=0;i<2;i++){
+      stay0.down_m+=position_target[i].down_m;
+      stay0.north_m+=position_target[i].north_m;
+      offboard.set_position_ned(stay0);
+      sleep_for(seconds(10));
+    }
+    get_current_position_ned_yaw(telemetry);
+    sleep_for(seconds(2));
     std::cout<<"--offboard ended\n";
-        return true;
+    return true;
 }
 
 void usage(const std::string& bin_name)
