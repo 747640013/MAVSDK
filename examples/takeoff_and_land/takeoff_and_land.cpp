@@ -6,15 +6,78 @@
 #include <cstdint>
 #include <mavsdk/mavsdk.h>
 #include <mavsdk/plugins/action/action.h>
+#include <mavsdk/plugins/offboard/offboard.h>
 #include <mavsdk/plugins/telemetry/telemetry.h>
 #include <iostream>
 #include <future>
 #include <memory>
 #include <thread>
+#include <cmath>
 
 using namespace mavsdk;
 using std::chrono::seconds;
 using std::this_thread::sleep_for;
+
+
+// 定义一个函数，输入为Telemetry对象的引用，输出为PositionNedYaw对象
+mavsdk::Offboard::PositionNedYaw get_current_position_ned_yaw(mavsdk::Telemetry& telemetry) 
+{
+    // 获取当前无人机的NED坐标和偏航角
+    auto ned_origin = telemetry.position_velocity_ned();
+    auto yaw_origin = telemetry.heading();
+    float yaw = std::round(yaw_origin.heading_deg*100)/100;     // round对小数点后1位进行四舍五入
+
+    // 输出无人机当前的NED坐标和偏航角
+    std::cout << "--Origin:\n"
+              << "\tN:"<<ned_origin.position.north_m<<"\t"
+              << "E:"<<ned_origin.position.east_m<<"\t"
+              << "D:"<<ned_origin.position.down_m<<"\t"
+              << "Y:"<<yaw << std::endl;
+
+    // 创建并返回一个PositionNedYaw对象，代表无人机当前的NED坐标和偏航角
+    return mavsdk::Offboard::PositionNedYaw{
+        ned_origin.position.north_m,
+        ned_origin.position.east_m,
+        ned_origin.position.down_m,
+        yaw
+    };
+}
+
+//  在NED坐标系下使用offboard控制,程序运行无误返回值为1
+bool offb_ctrl_ned(mavsdk::Offboard& offboard, mavsdk::Telemetry& telemetry)
+{
+    std::cout << "Starting offboard velocity control in NED coordinates\n";   
+    
+    
+    //  // 设置无人机位置更新频率为1hz
+    // const auto set_rate_result = telemetry.set_rate_position(1.0);
+    // if (set_rate_result != Telemetry::Result::Success) {
+    //     std::cerr << "Setting rate failed: " << set_rate_result << '\n';
+    //     return 1;
+    // }
+
+    // // Set up callback to monitor altitude while the vehicle is in flight
+    // telemetry.subscribe_position_velocity_ned([](Telemetry::PositionVelocityNed position) {
+    //     std::cout << "Height: " << position.position.down_m<< " m\n";
+    // });
+
+    // 需要先设置初值，否则无法切入offboard模式
+    const Offboard::VelocityNedYaw stay{};
+    offboard.set_velocity_ned(stay);
+
+    Offboard::Result offboard_result = offboard.start();
+    if (offboard_result != Offboard::Result::Success) {
+        std::cerr << "Offboard start failed: " << offboard_result << '\n';
+        return false;
+    }
+    auto stay0=get_current_position_ned_yaw(telemetry);
+    offboard.set_position_ned(stay0);
+    sleep_for(seconds(1));
+    std::cout << "--offboard started\n";
+    sleep_for(seconds(10));
+    std::cout<<"--offboard ended\n";
+        return true;
+}
 
 void usage(const std::string& bin_name)
 {
@@ -33,7 +96,7 @@ int main(int argc, char** argv)
         return 1;
     }
 
-    Mavsdk mavsdk;
+    Mavsdk mavsdk;  //创建mavsdk类对象
     ConnectionResult connection_result = mavsdk.add_any_connection(argv[1]);
 
     if (connection_result != ConnectionResult::Success) {
@@ -48,23 +111,12 @@ int main(int argc, char** argv)
     }
 
     // Instantiate plugins.
-    auto telemetry = Telemetry{system.value()};
+    auto telemetry = Telemetry{system.value()}; //使用构造函数创建对象，并结合列表初始化对象
     auto action = Action{system.value()};
-
-    // We want to listen to the altitude of the drone at 1 Hz.
-    const auto set_rate_result = telemetry.set_rate_position(1.0);
-    if (set_rate_result != Telemetry::Result::Success) {
-        std::cerr << "Setting rate failed: " << set_rate_result << '\n';
-        return 1;
-    }
-
-    // Set up callback to monitor altitude while the vehicle is in flight
-    telemetry.subscribe_position([](Telemetry::Position position) {
-        std::cout << "Altitude: " << position.relative_altitude_m << " m\n";
-    });
+    auto offboard= Offboard{system.value()};
 
     // Check until vehicle is ready to arm
-    while (telemetry.health_all_ok() != true) {
+    while (!telemetry.health_all_ok() ) {
         std::cout << "Vehicle is getting ready to arm\n";
         sleep_for(seconds(1));
     }
@@ -72,6 +124,8 @@ int main(int argc, char** argv)
     // Arm vehicle
     std::cout << "Arming...\n";
     const Action::Result arm_result = action.arm();
+
+    // sleep_for(seconds(10)); //only for helicopter
 
     if (arm_result != Action::Result::Success) {
         std::cerr << "Arming failed: " << arm_result << '\n';
@@ -86,8 +140,32 @@ int main(int argc, char** argv)
         return 1;
     }
 
-    // Let it hover for a bit before landing again.
+    auto in_air_promise = std::promise<void>{};
+    auto in_air_future = in_air_promise.get_future(); 
+    Telemetry::LandedStateHandle handle = telemetry.subscribe_landed_state(
+        [&telemetry, &in_air_promise, &handle](Telemetry::LandedState state) {
+            // lambda表达式  
+            if (state == Telemetry::LandedState::InAir) {
+                std::cout << "Taking off has finished\n.";
+                telemetry.unsubscribe_landed_state(handle);
+                in_air_promise.set_value();
+            }
+        });
+    in_air_future.wait_for(seconds(10));
+    if (in_air_future.wait_for(seconds(3)) == std::future_status::timeout) {
+        std::cerr << "Takeoff timed out.\n";
+        return 1;
+    }
+
     sleep_for(seconds(10));
+
+    //  使用NED坐标系控制
+    if (!offb_ctrl_ned(offboard,telemetry)){
+        return 1;
+    }
+
+    sleep_for(seconds(3));
+    // Let it hover for a bit before landing again.
 
     std::cout << "Landing...\n";
     const Action::Result land_result = action.land();
@@ -95,7 +173,7 @@ int main(int argc, char** argv)
         std::cerr << "Land failed: " << land_result << '\n';
         return 1;
     }
-
+    
     // Check if vehicle is still in air
     while (telemetry.in_air()) {
         std::cout << "Vehicle is landing...\n";
