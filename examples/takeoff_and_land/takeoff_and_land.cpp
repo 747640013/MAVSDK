@@ -29,10 +29,10 @@ mavsdk::Offboard::PositionNedYaw get_current_position_ned_yaw(mavsdk::Telemetry&
 
     // 输出无人机当前的NED坐标和偏航角
     std::cout << "--Origin:\n"
-              << "\tN:"<<ned_origin.position.north_m<<"\t"
-              << "E:"<<ned_origin.position.east_m<<"\t"
-              << "D:"<<ned_origin.position.down_m<<"\t"
-              << "Y:"<<yaw << std::endl;
+              << "\tN:" << ned_origin.position.north_m<<"\t"
+              << "E:" << ned_origin.position.east_m<<"\t"
+              << "D:" << ned_origin.position.down_m<<"\t"
+              << "Y:" << yaw << std::endl;
 
     // 创建并返回一个PositionNedYaw对象，代表无人机当前的NED坐标和偏航角
     return mavsdk::Offboard::PositionNedYaw{
@@ -86,7 +86,7 @@ void usage(const std::string& bin_name)
               << " For TCP : tcp://[server_host][:server_port]\n"
               << " For UDP : udp://[bind_host][:bind_port]\n"
               << " For Serial : serial:///path/to/serial/dev[:baudrate]\n"
-              << "For example, to connect to the simulator use URL: udp://:14540\n";
+              << " For example, to connect to the simulator use URL: udp://:14540\n";
 }
 
 int main(int argc, char** argv)
