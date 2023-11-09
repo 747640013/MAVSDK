@@ -16,6 +16,7 @@ target_link_libraries(takeoff_and_land
     MAVSDK::mavsdk
 )
 
+# 根据编译器设置警告 -Wall 表示启用所有警告 -Wextra 启用额外的警告
 if(NOT MSVC)
     add_compile_options(takeoff_and_land PRIVATE -Wall -Wextra)
 else()

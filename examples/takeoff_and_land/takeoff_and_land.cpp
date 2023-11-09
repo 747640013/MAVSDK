@@ -46,7 +46,7 @@ mavsdk::Offboard::PositionNedYaw get_current_position_ned_yaw(mavsdk::Telemetry&
 //  在NED坐标系下使用offboard控制,程序运行无误返回值为1
 bool offb_ctrl_ned(mavsdk::Offboard& offboard, mavsdk::Telemetry& telemetry)
 {
-    std::cout << "Starting offboard velocity control in NED coordinates\n";   
+    std::cout << "--Starting offboard velocity control in NED coordinates\n";   
     
     
     //  // 设置无人机位置更新频率为1hz
@@ -67,18 +67,20 @@ bool offb_ctrl_ned(mavsdk::Offboard& offboard, mavsdk::Telemetry& telemetry)
 
     Offboard::Result offboard_result = offboard.start();
     if (offboard_result != Offboard::Result::Success) {
-        std::cerr << "Offboard start failed: " << offboard_result << '\n';
+        std::cerr << "--Offboard start failed: " << offboard_result << '\n';
         return false;
     }
     std::cout << "--offboard started\n";
     Offboard::PositionNedYaw stay0=get_current_position_ned_yaw(telemetry);
     Offboard::PositionNedYaw position_target[]{
         {0,0,-3,0},
-        {3,0,0,0}
-    };   
-    for(int i=0;i<2;i++){
-      stay0.down_m+=position_target[i].down_m;
-      stay0.north_m+=position_target[i].north_m;
+        {3,0,0,0},
+        {-3,0,0,0}
+    };
+
+    for(int i=0;i<3;i++){
+      stay0.down_m += position_target[i].down_m;
+      stay0.north_m += position_target[i].north_m;
       offboard.set_position_ned(stay0);
       sleep_for(seconds(10));
     }
@@ -109,13 +111,13 @@ int main(int argc, char** argv)
     ConnectionResult connection_result = mavsdk.add_any_connection(argv[1]);
 
     if (connection_result != ConnectionResult::Success) {
-        std::cerr << "Connection failed: " << connection_result << '\n';
+        std::cerr << "--Connection failed: " << connection_result << '\n';
         return 1;
     }
 
     auto system = mavsdk.first_autopilot(3.0);
     if (!system) {
-        std::cerr << "Timed out waiting for system\n";
+        std::cerr << "--Timed out waiting for system\n";
         return 1;
     }
 
@@ -126,26 +128,27 @@ int main(int argc, char** argv)
 
     // Check until vehicle is ready to arm
     while (!telemetry.health_all_ok() ) {
-        std::cout << "Vehicle is getting ready to arm\n";
+        std::cout << "--Vehicle is getting ready to arm\n";
         sleep_for(seconds(1));
     }
 
     // Arm vehicle
-    std::cout << "Arming...\n";
+    std::cout << "--Arming...\n";
     const Action::Result arm_result = action.arm();
 
-    // sleep_for(seconds(10)); //only for helicopter
+    
 
     if (arm_result != Action::Result::Success) {
-        std::cerr << "Arming failed: " << arm_result << '\n';
+        std::cerr << "--Arming failed: " << arm_result << '\n';
         return 1;
     }
-
+    
+    // sleep_for(seconds(10)); //only for helicopter
     // Take off
-    std::cout << "Taking off...\n";
+    std::cout << "--Taking off...\n";
     const Action::Result takeoff_result = action.takeoff();
     if (takeoff_result != Action::Result::Success) {
-        std::cerr << "Takeoff failed: " << takeoff_result << '\n';
+        std::cerr << "--Takeoff failed: " << takeoff_result << '\n';
         return 1;
     }
 
@@ -155,14 +158,14 @@ int main(int argc, char** argv)
         [&telemetry, &in_air_promise, &handle](Telemetry::LandedState state) {
             // lambda表达式  
             if (state == Telemetry::LandedState::InAir) {
-                std::cout << "Taking off has finished\n.";
+                std::cout << "--Taking off has finished.\n";
                 telemetry.unsubscribe_landed_state(handle);
                 in_air_promise.set_value();
             }
         });
     in_air_future.wait_for(seconds(10));
     if (in_air_future.wait_for(seconds(3)) == std::future_status::timeout) {
-        std::cerr << "Takeoff timed out.\n";
+        std::cerr << "--Takeoff timed out.\n";
         return 1;
     }
 
@@ -176,23 +179,23 @@ int main(int argc, char** argv)
     sleep_for(seconds(3));
     // Let it hover for a bit before landing again.
 
-    std::cout << "Landing...\n";
+    std::cout << "--Landing...\n";
     const Action::Result land_result = action.land();
     if (land_result != Action::Result::Success) {
-        std::cerr << "Land failed: " << land_result << '\n';
+        std::cerr << "--Land failed: " << land_result << '\n';
         return 1;
     }
     
     // Check if vehicle is still in air
     while (telemetry.in_air()) {
-        std::cout << "Vehicle is landing...\n";
+        std::cout << "--Vehicle is landing...\n";
         sleep_for(seconds(1));
     }
-    std::cout << "Landed!\n";
+    std::cout << "--Landed!\n";
 
     // We are relying on auto-disarming but let's keep watching the telemetry for a bit longer.
     sleep_for(seconds(3));
-    std::cout << "Finished...\n";
+    std::cout << "--Finished...\n";
 
     return 0;
 }
