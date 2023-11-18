@@ -9,7 +9,7 @@ int main(int argc, char** argv){
     std::vector<int> localPorts={10104};
     UdpCommunicator udp("192.168.100.102",localPorts,remoteIps,10102);
 
-    udp.WaitforGpsOrigin();
+    udp.WaitforOriginGps();
     Message msg1;
     msg1.pos_ned_yaw={0,0,-3,0};
     auto publishFuture = std::async(std::launch::async, [&udp,&msg1](){udp.Publish(msg1);});

@@ -27,7 +27,9 @@ void UdpCommunicator::StopPublishing(){
     _stopPublishing = true;
 }
 
-void UdpCommunicator::SendGpsOrigin(const OriginMsg& msg){
+void UdpCommunicator::SendOriginGps(const OriginMsg& msg){
+
+    std::cout<< "--Start sending  the initial gps msg" <<std::endl;
     while(!_OriginFlag){
         for (size_t i=0;i< _remoteIps.size();++i){
             _toAddress.sin_addr.s_addr = inet_addr(_remoteIps[i].c_str());   
@@ -35,7 +37,8 @@ void UdpCommunicator::SendGpsOrigin(const OriginMsg& msg){
         }
         //  Sleep for 0.5 seconds to give up CPU resources, i.e.2hz
         std::this_thread::sleep_for(std::chrono::milliseconds(500));    
-    }  
+    }
+    std::cout<< "--Stop sending"<<std::endl;  
 }
 
 void UdpCommunicator::WaitforAck(){
@@ -95,7 +98,7 @@ void UdpCommunicator::WaitforAllIps() {
     _dynamicSubscribingThreads.clear();
 }
 
-void UdpCommunicator::WaitforGpsOrigin(){
+void UdpCommunicator::WaitforOriginGps(){
     OriginMsg recv_msg;
 
     struct sockaddr_in _remoteAddress;

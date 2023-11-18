@@ -51,12 +51,12 @@ public:
    void Publish(const Message&);
    void StopPublishing();
 
-   void SendGpsOrigin(const OriginMsg&);
+   void SendOriginGps(const OriginMsg&);
    void WaitforAck();
    void WaitforAckLoop(size_t);
    void WaitforAllIps();
    
-   void WaitforGpsOrigin();
+   void WaitforOriginGps();
 
    void SetSocketNodBlocking(int);
    void SetSocketBlocking(int);
