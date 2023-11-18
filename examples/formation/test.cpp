@@ -12,13 +12,13 @@ int main(int argc, char** argv){
     udp.WaitforGpsOrigin();
     Message msg1;
     msg1.pos_ned_yaw={0,0,-3,0};
-    auto publishFuture = std::async(std::launch::async, [&udp,&msg1](){udp.publish(msg1);});
+    auto publishFuture = std::async(std::launch::async, [&udp,&msg1](){udp.Publish(msg1);});
 
-    auto subscribeFuture = std::async(std::launch::async,[&udp](){udp.startDynamicSubscribing();});
+    auto subscribeFuture = std::async(std::launch::async,[&udp](){udp.StartDynamicSubscribing();});
     
     sleep_for(seconds(30));
-    udp.stopDynamicSubscribing();
-    udp.stopPublishing();
+    udp.StopDynamicSubscribing();
+    udp.StopPublishing();
 
     publishFuture.wait();
     subscribeFuture.wait();

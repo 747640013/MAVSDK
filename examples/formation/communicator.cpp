@@ -12,7 +12,7 @@ UdpCommunicator::~UdpCommunicator(){
     closeSocket();
 }
 
-void UdpCommunicator::publish(const Message& msg){
+void UdpCommunicator::Publish(const Message& msg){
     while(!_stopPublishing){
          for (size_t i=0;i< _remoteIps.size();++i){
             _toAddress.sin_addr.s_addr = inet_addr(_remoteIps[i].c_str());   
@@ -23,7 +23,7 @@ void UdpCommunicator::publish(const Message& msg){
     }  
 }
 
-void UdpCommunicator::stopPublishing(){
+void UdpCommunicator::StopPublishing(){
     _stopPublishing = true;
 }
 
@@ -74,7 +74,7 @@ void UdpCommunicator::WaitforAckLoop(size_t socketIndex){
             break;
         }
 
-        // Optionally sleep for a short duration to avoid high CPU usage in the absence of messages
+        // Optionally sleep for a short duration to avoid high CPU usage 
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
     }
 }
@@ -104,7 +104,7 @@ void UdpCommunicator::WaitforGpsOrigin(){
     /********         ！！！      ********
     Because the blocking model of sockets is used here, 
     the socket must be modified to blocking mode*/
-    setSocketBlocking(_sockets[0]);
+    SetSocketBlocking(_sockets[0]);
 
     std::cout << "--Wait for Origin GPS msg"<< std::endl;
 
@@ -124,20 +124,20 @@ void UdpCommunicator::WaitforGpsOrigin(){
     _remoteAddress.sin_port = htons(_targetPort);
     sendto(_socketSend, &recv_msg, sizeof(recv_msg),0,(struct sockaddr*)&_remoteAddress, sizeof(_remoteAddress));
 
-    setSocketNodBlocking(_sockets[0]);
+    SetSocketNodBlocking(_sockets[0]);
 }
 
 // Start dynamic subscribing to messages on different local ports
-void UdpCommunicator::startDynamicSubscribing(){
+void UdpCommunicator::StartDynamicSubscribing(){
     _stopDynamicSubscribing = false;
 
     // Create a thread for each local port
     for (size_t i = 0; i < _localPorts.size(); ++i) {
-        _dynamicSubscribingThreads.emplace_back([this, i] { dynamicSubscribingLoop(i); });
+        _dynamicSubscribingThreads.emplace_back([this, i] { DynamicSubscribingLoop(i); });
     }
 }
 
-void UdpCommunicator::dynamicSubscribingLoop(size_t socketIndex) {
+void UdpCommunicator::DynamicSubscribingLoop(size_t socketIndex) {
     while (!_stopDynamicSubscribing) {
         Message receivedMessage;
 
@@ -169,7 +169,7 @@ void UdpCommunicator::dynamicSubscribingLoop(size_t socketIndex) {
     }
 }
 
-void UdpCommunicator::stopDynamicSubscribing() {
+void UdpCommunicator::StopDynamicSubscribing() {
     _stopDynamicSubscribing = true;
 
     // Join all dynamic subscribing threads
@@ -181,7 +181,7 @@ void UdpCommunicator::stopDynamicSubscribing() {
     _dynamicSubscribingThreads.clear();
 }
 
-void UdpCommunicator::setSocketNodBlocking(int socket_fd){
+void UdpCommunicator::SetSocketNodBlocking(int socket_fd){
     int flags = fcntl(socket_fd, F_GETFL, 0);
     if (flags == -1) {
         perror("fcntl F_GETFL failed");
@@ -194,7 +194,7 @@ void UdpCommunicator::setSocketNodBlocking(int socket_fd){
     }
 }
 
-void UdpCommunicator::setSocketBlocking(int socket_fd){
+void UdpCommunicator::SetSocketBlocking(int socket_fd){
     int flags = fcntl(socket_fd, F_GETFL, 0);
     if (flags == -1) {
         perror("fcntl F_GETFL failed");
@@ -218,7 +218,7 @@ void UdpCommunicator::initialize(){
         }
         
         // set the socket to non-blocking mode
-        setSocketNodBlocking(socket_fd);
+        SetSocketNodBlocking(socket_fd);
 
         // setup local address   
         memset(&_localAddress, 0, sizeof(_localAddress));

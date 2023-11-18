@@ -29,28 +29,40 @@ struct Message {
 struct OriginMsg{
    mavsdk::Telemetry::GpsGlobalOrigin origin_gps;
 };
-
+/**
+ * @brief A class for multi-UAV communication
+ * 
+ * The leader's initial GPS information and each drone's own NED coordinates 
+ * are sent to multiple on-board computers with known IP addresses
+*/
 class UdpCommunicator{
 public:
-   // 构造函数参数：本机ip，本机接收端口(多个)，目标ip地址(多个)，目标端口
+   /**
+    * @brief the constructor
+    * 
+    * @param param1 The IPv4 address of this on-board computer
+    * @param param2 Multiple ports are used to receive data,the first of which is the port for receiving data from the leader
+    * @param param3 IPv4 address of each on-board computer
+    * @param param3 The port used to send data
+   */
    UdpCommunicator(const std::string& , const std::vector<int>& ,const std::vector<std::string>& , const int&);
    ~UdpCommunicator();
    
-   void publish(const Message& );
-   void stopPublishing();
+   void Publish(const Message&);
+   void StopPublishing();
 
-   void SendGpsOrigin(const OriginMsg& );
+   void SendGpsOrigin(const OriginMsg&);
    void WaitforAck();
    void WaitforAckLoop(size_t);
    void WaitforAllIps();
    
    void WaitforGpsOrigin();
 
-   void setSocketNodBlocking(int);
-   void setSocketBlocking(int);
-   void startDynamicSubscribing();
-   void dynamicSubscribingLoop(size_t);
-   void stopDynamicSubscribing();
+   void SetSocketNodBlocking(int);
+   void SetSocketBlocking(int);
+   void StartDynamicSubscribing();
+   void DynamicSubscribingLoop(size_t);
+   void StopDynamicSubscribing();
 
 private:
    std::string _local_ip;
