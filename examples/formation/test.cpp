@@ -7,7 +7,7 @@ using std::this_thread::sleep_for;
 int main(int argc, char** argv){
     std::vector<std::string> remoteIps={"192.168.100.104"};
     std::vector<int> localPorts={10104};
-    UdpCommunicator udp("192.168.100.102",localPorts,remoteIps,10102);
+    UdpCommunicator udp("192.168.100.102",localPorts,remoteIps,10102,20104);
 
     udp.WaitforOriginGps();
     Message msg1;

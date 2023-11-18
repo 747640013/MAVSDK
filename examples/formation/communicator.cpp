@@ -2,8 +2,8 @@
 
 
 UdpCommunicator::UdpCommunicator(const std::string& local_ip, const std::vector<int>& local_ports,
-    const std::vector<std::string>& remote_ips, const int& target_port): _local_ip(local_ip),
-    _localPorts(local_ports), _remoteIps(remote_ips), _targetPort(target_port)
+    const std::vector<std::string>& remote_ips, const int& target_port, const int & GpsPort): _local_ip(local_ip),
+    _localPorts(local_ports), _remoteIps(remote_ips), _targetPort(target_port), _GpsPort(GpsPort)
 {
     initialize();
 }
@@ -27,9 +27,14 @@ void UdpCommunicator::StopPublishing(){
     _stopPublishing = true;
 }
 
+// Leader-specific member function
 void UdpCommunicator::SendOriginGps(const OriginMsg& msg){
 
     std::cout<< "--Start sending  the initial gps msg" <<std::endl;
+    
+    // The leader uses this port to send its own GPS information
+    _toAddress.sin_port = htons(_GpsPort);
+
     while(!_OriginFlag){
         for (size_t i=0;i< _remoteIps.size();++i){
             _toAddress.sin_addr.s_addr = inet_addr(_remoteIps[i].c_str());   
@@ -38,9 +43,13 @@ void UdpCommunicator::SendOriginGps(const OriginMsg& msg){
         //  Sleep for 0.5 seconds to give up CPU resources, i.e.2hz
         std::this_thread::sleep_for(std::chrono::milliseconds(500));    
     }
+
+    _toAddress.sin_port = htons(_targetPort);// Restore the original transmission port
+
     std::cout<< "--Stop sending"<<std::endl;  
 }
 
+// Leader-specific member function
 void UdpCommunicator::WaitforAck(){
     // Create a thread for each local port
     for (size_t i = 0; i < _localPorts.size(); ++i) {
@@ -48,6 +57,7 @@ void UdpCommunicator::WaitforAck(){
     }
 }
 
+// Leader-specific member function
 void UdpCommunicator::WaitforAckLoop(size_t socketIndex){
     while (!_OriginFlag) {
         OriginMsg recv_msg;
@@ -82,6 +92,7 @@ void UdpCommunicator::WaitforAckLoop(size_t socketIndex){
     }
 }
 
+// Leader-specific member function
 void UdpCommunicator::WaitforAllIps(){
     // Wait for all expected IPs to be received
     while (_receivedIpCount < _remoteIps.size()) {
@@ -89,7 +100,7 @@ void UdpCommunicator::WaitforAllIps(){
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
     }
     _OriginFlag = true;
-     // Join all dynamic subscribing threads
+    // Join all dynamic subscribing threads
     for (std::thread& thread : _dynamicSubscribingThreads) {
         if (thread.joinable()) {
             thread.join();
@@ -98,36 +109,49 @@ void UdpCommunicator::WaitforAllIps(){
     _dynamicSubscribingThreads.clear();
 }
 
+// Follower-specific member function
 void UdpCommunicator::WaitforOriginGps(){
     OriginMsg recv_msg;
 
     struct sockaddr_in _remoteAddress;
     socklen_t _addrLength = sizeof(_remoteAddress);
     
-    /********         ！！！      ********
-    Because the blocking model of sockets is used here, 
-    the socket must be modified to blocking mode*/
-    SetSocketBlocking(_sockets[0]);
+    if((_socketRecv = socket(AF_INET, SOCK_DGRAM,0))<0){
+        perror("Socket creation failed");
+        exit(EXIT_FAILURE);
+    }
 
-    std::cout << "--Wait for Origin GPS msg"<< std::endl;
+    memset(&_localAddress, 0, sizeof(_localAddress));
+        _localAddress.sin_family = AF_INET;
+        _localAddress.sin_addr.s_addr = inet_addr(_local_ip.c_str());
+        _localAddress.sin_port = htons(_GpsPort);
+        
+    // Bind the socket
+    if (bind(_socketRecv, (const struct sockaddr*)&_localAddress, sizeof(_localAddress)) < 0) {
+        perror("Bind failed");
+        exit(EXIT_FAILURE);
+    } 
+
+    std::cout << "--Wait for initial GPS msg"<< std::endl;
 
     // blocking receive
-    recvfrom(_sockets[0], &recv_msg, sizeof(recv_msg),
+    recvfrom(_socketRecv, &recv_msg, sizeof(recv_msg),
                 0, (struct sockaddr*)&_remoteAddress, &_addrLength);
 
     // Convert sender's IP address to string
     char remoteIp[INET_ADDRSTRLEN];
     inet_ntop(AF_INET, &_remoteAddress.sin_addr, remoteIp, sizeof(remoteIp));
-    // Process the received message as needed
-    std::cout << "--Received GPS msg from " << remoteIp << ": "<< ntohs(_remoteAddress.sin_port)<< "\n"
-            << "X=" << recv_msg.origin_gps.latitude_deg << ", "
-            << "Y=" << recv_msg.origin_gps.longitude_deg << ", "
-            << "Z=" << recv_msg.origin_gps.altitude_m << std::endl;
+    // Print the received message as needed
+    std::cout << "--Received the initial GPS msg from " << remoteIp << ": "<< ntohs(_remoteAddress.sin_port)<< "\n"
+            << "--X=" << recv_msg.origin_gps.latitude_deg << ", "
+            << "--Y=" << recv_msg.origin_gps.longitude_deg << ", "
+            << "--Z=" << recv_msg.origin_gps.altitude_m << std::endl;
     
     _remoteAddress.sin_port = htons(_targetPort);
-    sendto(_socketSend, &recv_msg, sizeof(recv_msg),0,(struct sockaddr*)&_remoteAddress, sizeof(_remoteAddress));
+    sendto(_socketRecv, &recv_msg, sizeof(recv_msg),0,(struct sockaddr*)&_remoteAddress, sizeof(_remoteAddress));
 
-    SetSocketNodBlocking(_sockets[0]);
+    close(_socketRecv);
+
 }
 
 // Start dynamic subscribing to messages on different local ports
@@ -197,22 +221,9 @@ void UdpCommunicator::SetSocketNodBlocking(int socket_fd){
     }
 }
 
-void UdpCommunicator::SetSocketBlocking(int socket_fd){
-    int flags = fcntl(socket_fd, F_GETFL, 0);
-    if (flags == -1) {
-        perror("fcntl F_GETFL failed");
-        exit(EXIT_FAILURE);
-    }
-
-    if (fcntl(socket_fd, F_SETFL, flags & ~O_NONBLOCK) == -1) {
-        perror("fcntl F_SETFL failed");
-        exit(EXIT_FAILURE);
-    }
-}
-
 void UdpCommunicator::initialize(){
 
-     // Create server sockets
+     // Create multiple sockets for receiving NED coordinate information from multiple drones
     for(int localPort : _localPorts){
         int socket_fd = socket(AF_INET, SOCK_DGRAM, 0);
         if(socket_fd<0){
@@ -237,7 +248,7 @@ void UdpCommunicator::initialize(){
         _sockets.push_back(socket_fd);
     }
 
-    // Create a send socket
+    // Create a socket for transmitting its own NED  coordinate information to multiple drones
     if((_socketSend = socket(AF_INET, SOCK_DGRAM,0))<0){
         perror("Socket creation failed");
         exit(EXIT_FAILURE);
