@@ -44,7 +44,8 @@ public:
     * @param param2 Multiple ports are used to receive data,the first of which is the port for receiving data from the leader
     * @param param3 IPv4 address of each on-board computer
     * @param param3 Port used to send ned coordinate point information
-    * @param param4 Port used to receive initial gps information from the leader
+    * @param param4 The leader uses this port to send initial GPS information, 
+    * while the follower uses the same port to receive the leader's GPS information.
    */
    UdpCommunicator(const std::string& , const std::vector<int>& ,const std::vector<std::string>& , const int&, const int&);
    ~UdpCommunicator();

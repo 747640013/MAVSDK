@@ -74,7 +74,7 @@ void UdpCommunicator::WaitforAckLoop(size_t socketIndex){
             char remoteIp[INET_ADDRSTRLEN];
             inet_ntop(AF_INET, &_remoteAddress.sin_addr, remoteIp, sizeof(remoteIp));
             // Process the received message as needed
-            std::cout << "Received message from " << remoteIp << ": "<< ntohs(_remoteAddress.sin_port)<< "\n"
+            std::cout << "--Received message from " << remoteIp << ": "<< ntohs(_remoteAddress.sin_port)<< "\n"
                         << "X=" << recv_msg.origin_gps.latitude_deg << ", "
                         << "Y=" << recv_msg.origin_gps.longitude_deg << ", "
                         << "Z=" << recv_msg.origin_gps.altitude_m << std::endl; 
@@ -88,7 +88,7 @@ void UdpCommunicator::WaitforAckLoop(size_t socketIndex){
         }
 
         // Optionally sleep for a short duration to avoid high CPU usage 
-        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
     }
 }
 
@@ -97,7 +97,7 @@ void UdpCommunicator::WaitforAllIps(){
     // Wait for all expected IPs to be received
     while (_receivedIpCount < _remoteIps.size()) {
         // Optionally sleep for a short duration to avoid high CPU usage
-        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
     }
     _OriginFlag = true;
     // Join all dynamic subscribing threads
