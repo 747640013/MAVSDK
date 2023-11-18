@@ -52,16 +52,16 @@ bool UdpCommunicator::ConnectToFollowers(){
 }
 
 // This is a member function that is only valid for the leader
-void UdpCommunicator::SendtoAllFollowers(const OriginMsg& msg){
+void UdpCommunicator::SendtoAllFollowers(const mavsdk::Telemetry::GpsGlobalOrigin& msg){
     if (followerSockets.empty()) {
             std::cerr << "--Not connected to any follower" << std::endl;
             return;
         }
     
     std::cout << "--Sent initial gps msg to all followers: " 
-            << "--X=" << msg.origin_gps.latitude_deg << ", "
-            << "--Y=" << msg.origin_gps.longitude_deg << ", "
-            << "--Z=" << msg.origin_gps.altitude_m << std::endl;
+            << "--X=" << msg.latitude_deg << ", "
+            << "--Y=" << msg.longitude_deg << ", "
+            << "--Z=" << msg.altitude_m << std::endl;
     
     for (int Socket : followerSockets) {
         futures.push_back(std::async(std::launch::async, [this, Socket, &msg]() {
@@ -69,7 +69,7 @@ void UdpCommunicator::SendtoAllFollowers(const OriginMsg& msg){
                 perror("Error sending data");
                 return;
             }
-            OriginMsg recv_msg;
+            mavsdk::Telemetry::GpsGlobalOrigin recv_msg;
             int bytesReceived = read(Socket, &recv_msg, sizeof(recv_msg));
             if (bytesReceived == -1) {
                 perror("Error receiving response");
@@ -77,9 +77,9 @@ void UdpCommunicator::SendtoAllFollowers(const OriginMsg& msg){
             }
             ++_receivedIpCount;
             std::cout << "--Received response from follower:"
-            << "--X=" << msg.origin_gps.latitude_deg << ", "
-            << "--Y=" << msg.origin_gps.longitude_deg << ", "
-            << "--Z=" << msg.origin_gps.altitude_m << std::endl;
+            << "--X=" << msg.latitude_deg << ", "
+            << "--Y=" << msg.longitude_deg << ", "
+            << "--Z=" << msg.altitude_m << std::endl;
         }));
     }
 }
@@ -107,7 +107,7 @@ void UdpCommunicator::WaitforAllIps(){
 
 // This is a member function that is only valid for the follower
 void UdpCommunicator::WaitforOriginGps(){
-    OriginMsg recv_msg;
+    mavsdk::Telemetry::GpsGlobalOrigin recv_msg;
 
     struct sockaddr_in _remoteAddress;
     socklen_t _addrLength = sizeof(_remoteAddress);
@@ -151,9 +151,9 @@ void UdpCommunicator::WaitforOriginGps(){
     inet_ntop(AF_INET, &clientAddr.sin_addr, remoteIp, sizeof(remoteIp));
     // Print the received message as needed
     std::cout << "--Received the initial GPS msg from " << remoteIp << ": "<< ntohs(clientAddr.sin_port)<< "\n"
-            << "--X=" << recv_msg.origin_gps.latitude_deg << ", "
-            << "--Y=" << recv_msg.origin_gps.longitude_deg << ", "
-            << "--Z=" << recv_msg.origin_gps.altitude_m << std::endl;
+            << "--X=" << recv_msg.latitude_deg << ", "
+            << "--Y=" << recv_msg.longitude_deg << ", "
+            << "--Z=" << recv_msg.altitude_m << std::endl;
     
     write(clientSocket, &recv_msg, sizeof(recv_msg));
     
@@ -162,7 +162,7 @@ void UdpCommunicator::WaitforOriginGps(){
 
 }
 
-void UdpCommunicator::Publish(const Message& msg){
+void UdpCommunicator::Publish(const mavsdk::Offboard::PositionNedYaw& msg){
     while(!_stopPublishing){
          for (size_t i=0;i< _remoteIps.size();++i){
             _toAddress.sin_addr.s_addr = inet_addr(_remoteIps[i].c_str());   
@@ -189,7 +189,7 @@ void UdpCommunicator::StartDynamicSubscribing(){
 
 void UdpCommunicator::DynamicSubscribingLoop(size_t socketIndex) {
     while (!_stopDynamicSubscribing) {
-        Message receivedMessage;
+        mavsdk::Offboard::PositionNedYaw  receivedMessage;
 
         struct sockaddr_in _remoteAddress;
         socklen_t _addrLength = sizeof(_remoteAddress);
@@ -206,10 +206,10 @@ void UdpCommunicator::DynamicSubscribingLoop(size_t socketIndex) {
 
             std::lock_guard<std::mutex> lock(mtx);
             std::cout << "Received message from " << remoteIp << ": "<< ntohs(_remoteAddress.sin_port)<< "\n"
-                        << "X=" << receivedMessage.pos_ned_yaw.north_m << ", "
-                        << "Y=" << receivedMessage.pos_ned_yaw.east_m << ", "
-                        << "Z=" << receivedMessage.pos_ned_yaw.down_m << ", "
-                        << "Yaw=" << receivedMessage.pos_ned_yaw.yaw_deg << std::endl;      
+                        << "X=" << receivedMessage.north_m << ", "
+                        << "Y=" << receivedMessage.east_m << ", "
+                        << "Z=" << receivedMessage.down_m << ", "
+                        << "Yaw=" << receivedMessage.yaw_deg << std::endl;      
         }else if (bytesReceived < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
             // Handle error (excluding EAGAIN or EWOULDBLOCK, which indicate no data available)
             perror("recvfrom failed");

@@ -1,6 +1,6 @@
 #include "Communicator.hpp"
 
-
+using namespace mavsdk;
 using std::chrono::seconds;
 using std::this_thread::sleep_for;
 
@@ -11,8 +11,8 @@ int main(int argc, char** argv){
     UdpCommunicator udp("192.168.100.102",localPorts,remoteIps,10102);
 
     udp.WaitforOriginGps();
-    Message msg1;
-    msg1.pos_ned_yaw={1,0,-3,0};
+    Offboard::PositionNedYaw msg1;
+    msg1 = {1,0,-3,0};
     auto publishFuture = std::async(std::launch::async, [&udp,&msg1](){udp.Publish(msg1);});
 
     auto subscribeFuture = std::async(std::launch::async,[&udp](){udp.StartDynamicSubscribing();});
