@@ -2,14 +2,164 @@
 
 
 UdpCommunicator::UdpCommunicator(const std::string& local_ip, const std::vector<int>& local_ports,
-    const std::vector<std::string>& remote_ips, const int& target_port, const int & GpsPort): _local_ip(local_ip),
-    _localPorts(local_ports), _remoteIps(remote_ips), _targetPort(target_port), _GpsPort(GpsPort)
+    const std::vector<std::string>& remote_ips, const int& target_port): _local_ip(local_ip),
+    _localPorts(local_ports), _remoteIps(remote_ips), _targetPort(target_port)
 {
     initialize();
 }
 
 UdpCommunicator::~UdpCommunicator(){
     closeSocket();
+}
+
+// This is a member function that is only valid for the leader 
+bool UdpCommunicator::ConnectToFollowers(){
+
+    int port = _targetPort + 10000;
+    struct sockaddr_in _remoteAddress;
+
+    for(const auto ip : _remoteIps){
+        int socket_fd = socket(AF_INET, SOCK_STREAM, 0);  
+        if(socket_fd < 0){
+            perror("Socket creation failed");
+            exit(EXIT_FAILURE);
+        }
+        
+        // setup remote address   
+        memset(&_remoteAddress, 0, sizeof(_remoteAddress));
+        _remoteAddress.sin_family = AF_INET;
+        _remoteAddress.sin_addr.s_addr = inet_addr(ip.c_str());
+        _remoteAddress.sin_port = htons(port);
+        int retryCount = 0;
+        while(retryCount < 5){
+            if (connect(socket_fd, (struct sockaddr*)&_remoteAddress, sizeof(_remoteAddress)) == 0) {
+                break;
+            }
+            perror("--Error connecting to follower");
+            std::this_thread::sleep_for(std::chrono::seconds(5));
+            ++retryCount;
+        }
+        if(retryCount == 5) {
+            std::cerr << "--Failed to connect to follower at " << ip << std::endl;
+            close(socket_fd);
+            return false;
+        }
+        
+        followerSockets.push_back(socket_fd);
+        std::cout << "--Connected to follower at:" << ip << std::endl;
+    }
+    return true;
+}
+
+// This is a member function that is only valid for the leader
+void UdpCommunicator::SendtoAllFollowers(const OriginMsg& msg){
+    if (followerSockets.empty()) {
+            std::cerr << "--Not connected to any follower" << std::endl;
+            return;
+        }
+    
+    std::cout << "--Sent initial gps msg to all followers: " 
+            << "--X=" << msg.origin_gps.latitude_deg << ", "
+            << "--Y=" << msg.origin_gps.longitude_deg << ", "
+            << "--Z=" << msg.origin_gps.altitude_m << std::endl;
+    
+    for (int Socket : followerSockets) {
+        futures.push_back(std::async(std::launch::async, [this, Socket, &msg]() {
+            if (write(Socket, &msg, sizeof(msg)) == -1) {
+                perror("Error sending data");
+                return;
+            }
+            OriginMsg recv_msg;
+            int bytesReceived = read(Socket, &recv_msg, sizeof(recv_msg));
+            if (bytesReceived == -1) {
+                perror("Error receiving response");
+                return;
+            }
+            ++_receivedIpCount;
+            std::cout << "--Received response from follower:"
+            << "--X=" << msg.origin_gps.latitude_deg << ", "
+            << "--Y=" << msg.origin_gps.longitude_deg << ", "
+            << "--Z=" << msg.origin_gps.altitude_m << std::endl;
+        }));
+    }
+}
+
+// This is a member function that is only valid for the leader
+void UdpCommunicator::WaitforAllIps(){
+    // Wait for all expected IPs to be received
+    while (_receivedIpCount < _remoteIps.size()) {
+        // Optionally sleep for a short duration to avoid high CPU usage
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    }
+    
+    for(auto & future:futures){
+        future.wait();
+    }
+    futures.clear();
+
+    for (int Socket : followerSockets) {
+            close(Socket);
+        }
+
+    followerSockets.clear();
+    std::cout << "--All Tcp connections closed" << std::endl;
+}
+
+// This is a member function that is only valid for the follower
+void UdpCommunicator::WaitforOriginGps(){
+    OriginMsg recv_msg;
+
+    struct sockaddr_in _remoteAddress;
+    socklen_t _addrLength = sizeof(_remoteAddress);
+    
+    if((_socketRecv = socket(AF_INET, SOCK_STREAM,0))<0){
+        perror("Socket creation failed");
+        exit(EXIT_FAILURE);
+    }
+    int Port = _localPorts[0]+10000;
+    memset(&_localAddress, 0, sizeof(_localAddress));
+        _localAddress.sin_family = AF_INET;
+        _localAddress.sin_addr.s_addr = inet_addr(_local_ip.c_str());
+        _localAddress.sin_port = htons(Port);
+        
+    // Bind the socket
+    if (bind(_socketRecv, (const struct sockaddr*)&_localAddress, sizeof(_localAddress)) < 0) {
+        perror("Bind failed");
+        exit(EXIT_FAILURE);
+    }
+
+    if(listen(_socketRecv, 5) == -1) {
+            perror("Error listening on server socket");
+            close(_socketRecv);
+            exit(EXIT_FAILURE);
+        }
+
+    std::cout << "--Wait for initial GPS msg on port:"<<Port<< std::endl;
+
+    sockaddr_in clientAddr;
+    socklen_t clientAddrLen = sizeof(clientAddr);
+    int clientSocket = accept(_socketRecv, (struct sockaddr*)&clientAddr, &clientAddrLen);
+    
+    if (clientSocket == -1) {
+        std::cerr << "Not connected to any client or server" << std::endl;
+        exit(EXIT_FAILURE);
+    }
+
+    read(clientSocket,&recv_msg,sizeof(recv_msg));
+    // Convert sender's IP address to string
+    char remoteIp[INET_ADDRSTRLEN];
+    inet_ntop(AF_INET, &clientAddr.sin_addr, remoteIp, sizeof(remoteIp));
+    // Print the received message as needed
+    std::cout << "--Received the initial GPS msg from " << remoteIp << ": "<< ntohs(clientAddr.sin_port)<< "\n"
+            << "--X=" << recv_msg.origin_gps.latitude_deg << ", "
+            << "--Y=" << recv_msg.origin_gps.longitude_deg << ", "
+            << "--Z=" << recv_msg.origin_gps.altitude_m << std::endl;
+    
+    write(clientSocket, &recv_msg, sizeof(recv_msg));
+    
+    close(clientSocket);
+    close(_socketRecv);
+
 }
 
 void UdpCommunicator::Publish(const Message& msg){
@@ -25,133 +175,6 @@ void UdpCommunicator::Publish(const Message& msg){
 
 void UdpCommunicator::StopPublishing(){
     _stopPublishing = true;
-}
-
-// Leader-specific member function
-void UdpCommunicator::SendOriginGps(const OriginMsg& msg){
-
-    std::cout<< "--Start sending  the initial gps msg" <<std::endl;
-    
-    // The leader uses this port to send its own GPS information
-    _toAddress.sin_port = htons(_GpsPort);
-
-    while(!_OriginFlag){
-        for (size_t i=0;i< _remoteIps.size();++i){
-            _toAddress.sin_addr.s_addr = inet_addr(_remoteIps[i].c_str());   
-            sendto(_socketSend, &msg, sizeof(msg),0,(struct sockaddr*)&_toAddress, sizeof(_toAddress));
-        }
-        //  Sleep for 0.5 seconds to give up CPU resources, i.e.2hz
-        std::this_thread::sleep_for(std::chrono::milliseconds(500));    
-    }
-
-    _toAddress.sin_port = htons(_targetPort);// Restore the original transmission port
-
-    std::cout<< "--Stop sending"<<std::endl;  
-}
-
-// Leader-specific member function
-void UdpCommunicator::WaitforAck(){
-    // Create a thread for each local port
-    for (size_t i = 0; i < _localPorts.size(); ++i) {
-        _dynamicSubscribingThreads.emplace_back([this, i] { WaitforAckLoop(i); });
-    }
-}
-
-// Leader-specific member function
-void UdpCommunicator::WaitforAckLoop(size_t socketIndex){
-    while (!_OriginFlag) {
-        OriginMsg recv_msg;
-        
-        struct sockaddr_in _remoteAddress;
-        socklen_t _addrLength = sizeof(_remoteAddress);
-        // Non-blocking receive
-        ssize_t bytesReceived = recvfrom(_sockets[socketIndex], &recv_msg, sizeof(recv_msg),
-                                            MSG_DONTWAIT, (struct sockaddr*)&_remoteAddress, &_addrLength);
-
-        if (bytesReceived > 0) {
-
-            // Convert sender's IP address to string
-            char remoteIp[INET_ADDRSTRLEN];
-            inet_ntop(AF_INET, &_remoteAddress.sin_addr, remoteIp, sizeof(remoteIp));
-            // Process the received message as needed
-            std::cout << "--Received message from " << remoteIp << ": "<< ntohs(_remoteAddress.sin_port)<< "\n"
-                        << "X=" << recv_msg.origin_gps.latitude_deg << ", "
-                        << "Y=" << recv_msg.origin_gps.longitude_deg << ", "
-                        << "Z=" << recv_msg.origin_gps.altitude_m << std::endl; 
-
-            ++_receivedIpCount;  // Atomic counter for received IPs; 
-            break;   
-        }else if (bytesReceived < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
-            // Handle error (excluding EAGAIN or EWOULDBLOCK, which indicate no data available)
-            perror("recvfrom failed");
-            break;
-        }
-
-        // Optionally sleep for a short duration to avoid high CPU usage 
-        std::this_thread::sleep_for(std::chrono::milliseconds(200));
-    }
-}
-
-// Leader-specific member function
-void UdpCommunicator::WaitforAllIps(){
-    // Wait for all expected IPs to be received
-    while (_receivedIpCount < _remoteIps.size()) {
-        // Optionally sleep for a short duration to avoid high CPU usage
-        std::this_thread::sleep_for(std::chrono::milliseconds(500));
-    }
-    _OriginFlag = true;
-    // Join all dynamic subscribing threads
-    for (std::thread& thread : _dynamicSubscribingThreads) {
-        if (thread.joinable()) {
-            thread.join();
-        }
-    }
-    _dynamicSubscribingThreads.clear();
-}
-
-// Follower-specific member function
-void UdpCommunicator::WaitforOriginGps(){
-    OriginMsg recv_msg;
-
-    struct sockaddr_in _remoteAddress;
-    socklen_t _addrLength = sizeof(_remoteAddress);
-    
-    if((_socketRecv = socket(AF_INET, SOCK_DGRAM,0))<0){
-        perror("Socket creation failed");
-        exit(EXIT_FAILURE);
-    }
-
-    memset(&_localAddress, 0, sizeof(_localAddress));
-        _localAddress.sin_family = AF_INET;
-        _localAddress.sin_addr.s_addr = inet_addr(_local_ip.c_str());
-        _localAddress.sin_port = htons(_GpsPort);
-        
-    // Bind the socket
-    if (bind(_socketRecv, (const struct sockaddr*)&_localAddress, sizeof(_localAddress)) < 0) {
-        perror("Bind failed");
-        exit(EXIT_FAILURE);
-    } 
-
-    std::cout << "--Wait for initial GPS msg"<< std::endl;
-
-    // blocking receive
-    recvfrom(_socketRecv, &recv_msg, sizeof(recv_msg),
-                0, (struct sockaddr*)&_remoteAddress, &_addrLength);
-
-    // Convert sender's IP address to string
-    char remoteIp[INET_ADDRSTRLEN];
-    inet_ntop(AF_INET, &_remoteAddress.sin_addr, remoteIp, sizeof(remoteIp));
-    // Print the received message as needed
-    std::cout << "--Received the initial GPS msg from " << remoteIp << ": "<< ntohs(_remoteAddress.sin_port)<< "\n"
-            << "--X=" << recv_msg.origin_gps.latitude_deg << ", "
-            << "--Y=" << recv_msg.origin_gps.longitude_deg << ", "
-            << "--Z=" << recv_msg.origin_gps.altitude_m << std::endl;
-    
-    _remoteAddress.sin_port = htons(_targetPort);
-    sendto(_socketRecv, &recv_msg, sizeof(recv_msg),0,(struct sockaddr*)&_remoteAddress, sizeof(_remoteAddress));
-
-    close(_socketRecv);
-
 }
 
 // Start dynamic subscribing to messages on different local ports
@@ -180,6 +203,8 @@ void UdpCommunicator::DynamicSubscribingLoop(size_t socketIndex) {
             char remoteIp[INET_ADDRSTRLEN];
             inet_ntop(AF_INET, &_remoteAddress.sin_addr, remoteIp, sizeof(remoteIp));
             // Process the received message as needed
+
+            std::lock_guard<std::mutex> lock(mtx);
             std::cout << "Received message from " << remoteIp << ": "<< ntohs(_remoteAddress.sin_port)<< "\n"
                         << "X=" << receivedMessage.pos_ned_yaw.north_m << ", "
                         << "Y=" << receivedMessage.pos_ned_yaw.east_m << ", "
@@ -191,7 +216,7 @@ void UdpCommunicator::DynamicSubscribingLoop(size_t socketIndex) {
             break;
         }
 
-        // Optionally sleep for a short duration to avoid high CPU usage in the absence of messages
+        // Optionally sleep for a short duration to avoid high CPU usage 
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
     }
 }

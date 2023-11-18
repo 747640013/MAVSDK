@@ -44,30 +44,30 @@ public:
     * @param param2 Multiple ports are used to receive data,the first of which is the port for receiving data from the leader
     * @param param3 IPv4 address of each on-board computer
     * @param param3 Port used to send ned coordinate point information
-    * @param param4 The leader uses this port to send initial GPS information, 
-    * while the follower uses the same port to receive the leader's GPS information.
    */
-   UdpCommunicator(const std::string& , const std::vector<int>& ,const std::vector<std::string>& , const int&, const int&);
+   UdpCommunicator(const std::string& , const std::vector<int>& ,const std::vector<std::string>& , const int&);
    ~UdpCommunicator();
+   
+   bool ConnectToFollowers();
+   void SendtoAllFollowers(const OriginMsg&);
+   void WaitforAllIps();
+   
+   void WaitforOriginGps();
    
    void Publish(const Message&);
    void StopPublishing();
 
-   void SendOriginGps(const OriginMsg&);
-   void WaitforAck();
-   void WaitforAckLoop(size_t);
-   void WaitforAllIps();
-   
-   void WaitforOriginGps();
-
    void SetSocketNodBlocking(int);
    void StartDynamicSubscribing();
-   void DynamicSubscribingLoop(size_t);
+   void DynamicSubscribingLoop(size_t); 
    void StopDynamicSubscribing();
-
+   
+   std::mutex mtx;
+   std::vector<int> followerSockets;
+   std::vector<std::future<void>> futures;
 private:
    std::string _local_ip;
-   int _targetPort, _GpsPort, _socketSend,_socketRecv;
+   int _targetPort, _socketSend,_socketRecv;
    struct sockaddr_in _localAddress, _toAddress;
 
    std::vector<int> _localPorts,_sockets;
