@@ -43,7 +43,7 @@ public:
     * @param param1 The IPv4 address of this on-board computer
     * @param param2 Multiple ports are used to receive data,the first of which is the port for receiving data from the leader
     * @param param3 IPv4 address of each on-board computer
-    * @param param3 The port used to send data
+    * @param param3 target port
    */
    UdpCommunicator(const std::string& , const std::vector<int>& ,const std::vector<std::string>& , const int&);
    ~UdpCommunicator();

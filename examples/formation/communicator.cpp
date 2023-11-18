@@ -18,7 +18,7 @@ void UdpCommunicator::Publish(const Message& msg){
             _toAddress.sin_addr.s_addr = inet_addr(_remoteIps[i].c_str());   
             sendto(_socketSend, &msg, sizeof(msg),0,(struct sockaddr*)&_toAddress, sizeof(_toAddress));
         }
-        //  Sleep for 0.5 seconds to give up CPU resources, i.e.2hz
+        //  Sleep for 0.5 seconds to give up CPU resources, i.e. 2hz
         std::this_thread::sleep_for(std::chrono::milliseconds(500));  
     }  
 }
@@ -82,7 +82,7 @@ void UdpCommunicator::WaitforAckLoop(size_t socketIndex){
     }
 }
 
-void UdpCommunicator::WaitforAllIps() {
+void UdpCommunicator::WaitforAllIps(){
     // Wait for all expected IPs to be received
     while (_receivedIpCount < _remoteIps.size()) {
         // Optionally sleep for a short duration to avoid high CPU usage
