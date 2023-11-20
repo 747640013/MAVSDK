@@ -21,35 +21,62 @@
 #include <condition_variable>
 #include <cmath>
 
-// Define a generic message structure
+
 struct Message {
    mavsdk::Offboard::PositionNedYaw pos_ned_yaw;
 };
 
-
+struct OriginMsg{
+   mavsdk::Telemetry::GpsGlobalOrigin origin_gps;
+};
+/**
+ * @brief A class for multi-UAV communication
+ * 
+ * The leader's initial GPS information and each drone's own NED coordinates 
+ * are sent to multiple on-board computers with known IP addresses
+*/
 class UdpCommunicator{
 public:
+   /**
+    * @brief the constructor
+    * 
+    * @param param1 The IPv4 address of this on-board computer
+    * @param param2 Multiple ports are used to receive data,the first of which is the port for receiving data from the leader
+    * @param param3 IPv4 address of each on-board computer
+    * @param param3 Port used to send ned coordinate point information
+   */
    UdpCommunicator(const std::string& , const std::vector<int>& ,const std::vector<std::string>& , const int&);
    ~UdpCommunicator();
    
-   void publish(const Message& );
-   void stopPublishing();
+   bool ConnectToFollowers();
+   void SendtoAllFollowers(const OriginMsg&);
+   void WaitforAllIps();
+   
+   void WaitforOriginGps();
+   
+   void Publish(const Message&);
+   void StopPublishing();
 
-   void setSocketNodBlocking(int );
-   void startDynamicSubscribing();
-   void dynamicSubscribingLoop(size_t);
-   void stopDynamicSubscribing();
+   void SetSocketNodBlocking(int);
+   void StartDynamicSubscribing();
+   void DynamicSubscribingLoop(size_t); 
+   void StopDynamicSubscribing();
+   
+   std::mutex mtx;
+   std::vector<int> followerSockets;
+   std::vector<std::future<void>> futures;
 private:
    std::string _local_ip;
-   int _targetPort, _socketSend;
-   struct sockaddr_in _localAddress, _remoteAddress, _toAddress;
-   socklen_t _addrLength = sizeof(_remoteAddress);
-   
+   int _targetPort, _socketSend,_socketRecv;
+   struct sockaddr_in _localAddress, _toAddress;
+
    std::vector<int> _localPorts,_sockets;
    std::vector<std::string> _remoteIps;
    std::vector<std::thread> _dynamicSubscribingThreads;
    std::atomic_bool _stopDynamicSubscribing{false};
+   std::atomic_bool _OriginFlag{false};
    std::atomic_bool _stopPublishing{false};
+   std::atomic_int _receivedIpCount{0};  // Atomic counter for received IPs
   
    void initialize();
    void closeSocket();
