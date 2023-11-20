@@ -21,14 +21,6 @@
 #include <condition_variable>
 #include <cmath>
 
-
-struct Message {
-   mavsdk::Offboard::PositionNedYaw pos_ned_yaw;
-};
-
-struct OriginMsg{
-   mavsdk::Telemetry::GpsGlobalOrigin origin_gps;
-};
 /**
  * @brief A class for multi-UAV communication
  * 
@@ -49,12 +41,12 @@ public:
    ~UdpCommunicator();
    
    bool ConnectToFollowers();
-   void SendtoAllFollowers(const OriginMsg&);
+   void SendtoAllFollowers(const mavsdk::Telemetry::GpsGlobalOrigin&);
    void WaitforAllIps();
    
    void WaitforOriginGps();
    
-   void Publish(const Message&);
+   void Publish(const mavsdk::Offboard::PositionNedYaw&);
    void StopPublishing();
 
    void SetSocketNodBlocking(int);
