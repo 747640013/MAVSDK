@@ -58,17 +58,17 @@ public:
    std::vector<int> followerSockets;
    std::vector<std::future<void>> futures;
 private:
-   std::string _local_ip;
-   int _targetPort, _socketSend,_socketRecv;
-   struct sockaddr_in _localAddress, _toAddress;
+   std::string m_local_ip;
+   int m_targetPort, m_socketSend,m_socketRecv;
+   struct sockaddr_in m_localAddress, m_toAddress;
 
-   std::vector<int> _localPorts,_sockets;
-   std::vector<std::string> _remoteIps;
-   std::vector<std::thread> _dynamicSubscribingThreads;
-   std::atomic_bool _stopDynamicSubscribing{false};
-   std::atomic_bool _OriginFlag{false};
-   std::atomic_bool _stopPublishing{false};
-   std::atomic_int _receivedIpCount{0};  // Atomic counter for received IPs
+   std::vector<int> m_localPorts,m_sockets;
+   std::vector<std::string> m_remoteIps;
+   std::vector<std::thread> m_dynamicSubscribingThreads;
+   std::atomic_bool m_stopDynamicSubscribing{false};
+   std::atomic_bool m_OriginFlag{false};
+   std::atomic_bool m_stopPublishing{false};
+   std::atomic_int m_receivedIpCount{0};  // Atomic counter for received IPs
   
    void initialize();
    void closeSocket();
