@@ -6,10 +6,11 @@
 参数2 本机多个接收端口
 参数3 多个跟随者ipv4地址
 参数4 本机发送端口
+参数5,6 相对偏差
 */
 UdpCommunicator::UdpCommunicator(const std::string& local_ip, const std::vector<int>& local_ports,
     const std::vector<std::string>& remote_ips, const int& target_port): m_local_ip(local_ip),
-    m_localPorts(local_ports), m_remoteIps(remote_ips), m_targetPort(target_port)
+    m_localPorts(local_ports), m_remoteIps(remote_ips), m_targetPort(target_port),delta_x(0.0),delta_y(0.0)
 {
     initialize();
 }
@@ -124,9 +125,8 @@ void UdpCommunicator::WaitforAllIps(){
 /*
 跟随者创建服务端tcp，接收到初始gps信息后并向领导者回复后，关闭并清理socket
 */
-void UdpCommunicator::WaitforOriginGps(){
-    mavsdk::Telemetry::GpsGlobalOrigin recv_msg;
-
+void UdpCommunicator::WaitforOriginGps()
+{
     struct sockaddr_in _remoteAddress;
     socklen_t _addrLength = sizeof(_remoteAddress);
     
@@ -179,6 +179,25 @@ void UdpCommunicator::WaitforOriginGps(){
     close(m_socketRecv);
 
 }
+
+void UdpCommunicator::calculate_bais(mavsdk::Telemetry::GpsGlobalOrigin& msg)
+{
+	printf("--Leader's init gps info %3.10f,%3.10f,%3.10f\n",recv_msg.latitude_deg,recv_msg.longitude_deg,recv_msg.altitude_m);
+	printf("--Local init gps %3.10f,%3.10f,%3.10f\n",msg.latitude_deg,msg.longitude_deg,msg.altitude_m);
+
+    GeographicLib::LocalCartesian geo_converter;
+    geo_converter.Reset(recv_msg.latitude_deg,recv_msg.longitude_deg,recv_msg.altitude_m);
+	double x1, y1,z1;
+	geo_converter.Forward(recv_msg.latitude_deg, recv_msg.longitude_deg, recv_msg.altitude_m, y1, x1, z1);  // ENU坐标
+
+	double x2, y2,z2;
+    geo_converter.Forward(msg.latitude_deg, msg.longitude_deg, msg.altitude_m, y2, x2, z2);
+	delta_x = round((x1 - x2)*10)/10;
+	delta_y = round((y1 - y2)*10)/10;
+	printf("--dx=%f,dy=%f\n",delta_x,delta_y);
+
+}
+
 
 void UdpCommunicator::Publish(const mavsdk::Offboard::PositionNedYaw& msg){
     while(!m_stopPublishing){

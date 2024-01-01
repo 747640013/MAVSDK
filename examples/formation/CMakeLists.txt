@@ -5,18 +5,22 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 project(formation)
 
+find_package(MAVSDK REQUIRED)
+find_package(Threads REQUIRED)
+find_package(GeographicLib REQUIRED)  
+
+
 add_executable(test
     test.cpp
     communicator.cpp
 )
 
-find_package(MAVSDK REQUIRED)
-find_package(Threads REQUIRED)
-
+target_include_directories(test PRIVATE ${GeographicLib_INCLUDE_DIRS})
 
 target_link_libraries(test
     MAVSDK::mavsdk
     Threads::Threads
+    GeographicLib::GeographicLib
 )
 
 if(NOT MSVC)

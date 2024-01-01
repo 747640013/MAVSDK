@@ -8,6 +8,8 @@
 #include <mavsdk/plugins/action/action.h>
 #include <mavsdk/plugins/offboard/offboard.h>
 #include <mavsdk/plugins/telemetry/telemetry.h>
+#include <stdio.h>
+#include <GeographicLib/LocalCartesian.hpp> 
 #include <vector>
 #include <fcntl.h>
 #include <future>
@@ -45,6 +47,7 @@ public:
    void WaitforAllIps();
    
    void WaitforOriginGps();
+   void calculate_bais(mavsdk::Telemetry::GpsGlobalOrigin&);
    
    void Publish(const mavsdk::Offboard::PositionNedYaw&);
    void StopPublishing();
@@ -53,7 +56,10 @@ public:
    void StartDynamicSubscribing();
    void DynamicSubscribingLoop(size_t); 
    void StopDynamicSubscribing();
-   
+
+   mavsdk::Telemetry::GpsGlobalOrigin recv_msg;
+   double delta_x,delta_y;
+
    std::mutex mtx;
    std::vector<int> followerSockets;
    std::vector<std::future<void>> futures;
