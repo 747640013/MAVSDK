@@ -1,9 +1,15 @@
 #include "Communicator.hpp"
 
-
+/*
+构造函数
+参数1 本机ipv4地址
+参数2 本机多个接收端口
+参数3 多个跟随者ipv4地址
+参数4 本机发送端口
+*/
 UdpCommunicator::UdpCommunicator(const std::string& local_ip, const std::vector<int>& local_ports,
-    const std::vector<std::string>& remote_ips, const int& target_port): _local_ip(local_ip),
-    _localPorts(local_ports), _remoteIps(remote_ips), _targetPort(target_port)
+    const std::vector<std::string>& remote_ips, const int& target_port): m_local_ip(local_ip),
+    m_localPorts(local_ports), m_remoteIps(remote_ips), m_targetPort(target_port)
 {
     initialize();
 }
@@ -13,12 +19,18 @@ UdpCommunicator::~UdpCommunicator(){
 }
 
 // This is a member function that is only valid for the leader 
+/*
+作为客户端向各个跟随者tcp连接请求，建立socket，（需要跟随者先开启服务端）
+若跟随者服务端未开启，5秒后重试，共尝试5次
+与所有跟随者成功建立通信返回true
+若有一个失败返回false
+*/
 bool UdpCommunicator::ConnectToFollowers(){
 
-    int port = _targetPort + 10000;
+    int port = m_targetPort + 10000;
     struct sockaddr_in _remoteAddress;
 
-    for(const auto ip : _remoteIps){
+    for(const auto ip : m_remoteIps){
         int socket_fd = socket(AF_INET, SOCK_STREAM, 0);  
         if(socket_fd < 0){
             perror("Socket creation failed");
@@ -75,7 +87,7 @@ void UdpCommunicator::SendtoAllFollowers(const mavsdk::Telemetry::GpsGlobalOrigi
                 perror("Error receiving response");
                 return;
             }
-            ++_receivedIpCount;
+            ++m_receivedIpCount;
             std::cout << "--Received response from follower:"
             << "--X=" << msg.latitude_deg << ", "
             << "--Y=" << msg.longitude_deg << ", "
@@ -85,9 +97,12 @@ void UdpCommunicator::SendtoAllFollowers(const mavsdk::Telemetry::GpsGlobalOrigi
 }
 
 // This is a member function that is only valid for the leader
+/*
+所有跟随都收到领导者初始GPS信息后，清理socket，清理线程
+*/
 void UdpCommunicator::WaitforAllIps(){
     // Wait for all expected IPs to be received
-    while (_receivedIpCount < _remoteIps.size()) {
+    while (m_receivedIpCount < m_remoteIps.size()) {
         // Optionally sleep for a short duration to avoid high CPU usage
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
     }
@@ -106,31 +121,34 @@ void UdpCommunicator::WaitforAllIps(){
 }
 
 // This is a member function that is only valid for the follower
+/*
+跟随者创建服务端tcp，接收到初始gps信息后并向领导者回复后，关闭并清理socket
+*/
 void UdpCommunicator::WaitforOriginGps(){
     mavsdk::Telemetry::GpsGlobalOrigin recv_msg;
 
     struct sockaddr_in _remoteAddress;
     socklen_t _addrLength = sizeof(_remoteAddress);
     
-    if((_socketRecv = socket(AF_INET, SOCK_STREAM,0))<0){
+    if((m_socketRecv = socket(AF_INET, SOCK_STREAM,0))<0){
         perror("Socket creation failed");
         exit(EXIT_FAILURE);
     }
-    int Port = _localPorts[0]+10000;
-    memset(&_localAddress, 0, sizeof(_localAddress));
-        _localAddress.sin_family = AF_INET;
-        _localAddress.sin_addr.s_addr = inet_addr(_local_ip.c_str());
-        _localAddress.sin_port = htons(Port);
+    int Port = m_localPorts[0]+10000;
+    memset(&m_localAddress, 0, sizeof(m_localAddress));
+        m_localAddress.sin_family = AF_INET;
+        m_localAddress.sin_addr.s_addr = inet_addr(m_local_ip.c_str());
+        m_localAddress.sin_port = htons(Port);
         
     // Bind the socket
-    if (bind(_socketRecv, (const struct sockaddr*)&_localAddress, sizeof(_localAddress)) < 0) {
+    if (bind(m_socketRecv, (const struct sockaddr*)&m_localAddress, sizeof(m_localAddress)) < 0) {
         perror("Bind failed");
         exit(EXIT_FAILURE);
     }
 
-    if(listen(_socketRecv, 5) == -1) {
+    if(listen(m_socketRecv, 5) == -1) {
             perror("Error listening on server socket");
-            close(_socketRecv);
+            close(m_socketRecv);
             exit(EXIT_FAILURE);
         }
 
@@ -138,7 +156,7 @@ void UdpCommunicator::WaitforOriginGps(){
 
     sockaddr_in clientAddr;
     socklen_t clientAddrLen = sizeof(clientAddr);
-    int clientSocket = accept(_socketRecv, (struct sockaddr*)&clientAddr, &clientAddrLen);
+    int clientSocket = accept(m_socketRecv, (struct sockaddr*)&clientAddr, &clientAddrLen);
     
     if (clientSocket == -1) {
         std::cerr << "Not connected to any client or server" << std::endl;
@@ -158,15 +176,15 @@ void UdpCommunicator::WaitforOriginGps(){
     write(clientSocket, &recv_msg, sizeof(recv_msg));
     
     close(clientSocket);
-    close(_socketRecv);
+    close(m_socketRecv);
 
 }
 
 void UdpCommunicator::Publish(const mavsdk::Offboard::PositionNedYaw& msg){
-    while(!_stopPublishing){
-         for (size_t i=0;i< _remoteIps.size();++i){
-            _toAddress.sin_addr.s_addr = inet_addr(_remoteIps[i].c_str());   
-            sendto(_socketSend, &msg, sizeof(msg),0,(struct sockaddr*)&_toAddress, sizeof(_toAddress));
+    while(!m_stopPublishing){
+         for (size_t i=0;i< m_remoteIps.size();++i){
+            m_toAddress.sin_addr.s_addr = inet_addr(m_remoteIps[i].c_str());   
+            sendto(m_socketSend, &msg, sizeof(msg),0,(struct sockaddr*)&m_toAddress, sizeof(m_toAddress));
         }
         //  Sleep for 0.5 seconds to give up CPU resources, i.e. 2hz
         std::this_thread::sleep_for(std::chrono::milliseconds(500));  
@@ -174,27 +192,27 @@ void UdpCommunicator::Publish(const mavsdk::Offboard::PositionNedYaw& msg){
 }
 
 void UdpCommunicator::StopPublishing(){
-    _stopPublishing = true;
+    m_stopPublishing = true;
 }
 
 // Start dynamic subscribing to messages on different local ports
 void UdpCommunicator::StartDynamicSubscribing(){
-    _stopDynamicSubscribing = false;
+    m_stopDynamicSubscribing = false;
 
     // Create a thread for each local port
-    for (size_t i = 0; i < _localPorts.size(); ++i) {
-        _dynamicSubscribingThreads.emplace_back([this, i] { DynamicSubscribingLoop(i); });
+    for (size_t i = 0; i < m_localPorts.size(); ++i) {
+        m_dynamicSubscribingThreads.emplace_back([this, i] { DynamicSubscribingLoop(i); });
     }
 }
 
 void UdpCommunicator::DynamicSubscribingLoop(size_t socketIndex) {
-    while (!_stopDynamicSubscribing) {
+    while (!m_stopDynamicSubscribing) {
         mavsdk::Offboard::PositionNedYaw  receivedMessage;
 
         struct sockaddr_in _remoteAddress;
         socklen_t _addrLength = sizeof(_remoteAddress);
         // Non-blocking receive
-        ssize_t bytesReceived = recvfrom(_sockets[socketIndex], &receivedMessage, sizeof(receivedMessage),
+        ssize_t bytesReceived = recvfrom(m_sockets[socketIndex], &receivedMessage, sizeof(receivedMessage),
                                             MSG_DONTWAIT, (struct sockaddr*)&_remoteAddress, &_addrLength);
 
         if (bytesReceived > 0) {
@@ -222,15 +240,15 @@ void UdpCommunicator::DynamicSubscribingLoop(size_t socketIndex) {
 }
 
 void UdpCommunicator::StopDynamicSubscribing() {
-    _stopDynamicSubscribing = true;
+    m_stopDynamicSubscribing = true;
 
     // Join all dynamic subscribing threads
-    for (std::thread& thread : _dynamicSubscribingThreads) {
+    for (std::thread& thread : m_dynamicSubscribingThreads) {
         if (thread.joinable()) {
             thread.join();
         }
     }
-    _dynamicSubscribingThreads.clear();
+    m_dynamicSubscribingThreads.clear();
 }
 
 void UdpCommunicator::SetSocketNodBlocking(int socket_fd){
@@ -249,7 +267,7 @@ void UdpCommunicator::SetSocketNodBlocking(int socket_fd){
 void UdpCommunicator::initialize(){
 
      // Create multiple sockets for receiving NED coordinate information from multiple drones
-    for(int localPort : _localPorts){
+    for(int localPort : m_localPorts){
         int socket_fd = socket(AF_INET, SOCK_DGRAM, 0);
         if(socket_fd<0){
             perror("Socket creation failed");
@@ -260,34 +278,34 @@ void UdpCommunicator::initialize(){
         SetSocketNodBlocking(socket_fd);
 
         // setup local address   
-        memset(&_localAddress, 0, sizeof(_localAddress));
-        _localAddress.sin_family = AF_INET;
-        _localAddress.sin_addr.s_addr = inet_addr(_local_ip.c_str());
-        _localAddress.sin_port = htons(localPort);
+        memset(&m_localAddress, 0, sizeof(m_localAddress));
+        m_localAddress.sin_family = AF_INET;
+        m_localAddress.sin_addr.s_addr = inet_addr(m_local_ip.c_str());
+        m_localAddress.sin_port = htons(localPort);
         
         // Bind the socket
-        if (bind(socket_fd, (const struct sockaddr*)&_localAddress, sizeof(_localAddress)) < 0) {
+        if (bind(socket_fd, (const struct sockaddr*)&m_localAddress, sizeof(m_localAddress)) < 0) {
             perror("Bind failed");
             exit(EXIT_FAILURE);
         }
-        _sockets.push_back(socket_fd);
+        m_sockets.push_back(socket_fd);
     }
 
     // Create a socket for transmitting its own NED  coordinate information to multiple drones
-    if((_socketSend = socket(AF_INET, SOCK_DGRAM,0))<0){
+    if((m_socketSend = socket(AF_INET, SOCK_DGRAM,0))<0){
         perror("Socket creation failed");
         exit(EXIT_FAILURE);
     } 
 
     // Set up  target address
-    memset(&_toAddress, 0, sizeof(_toAddress));
-    _toAddress.sin_family = AF_INET;
-    _toAddress.sin_port = htons(_targetPort);
+    memset(&m_toAddress, 0, sizeof(m_toAddress));
+    m_toAddress.sin_family = AF_INET;
+    m_toAddress.sin_port = htons(m_targetPort);
 
 }
 
 void UdpCommunicator::closeSocket(){
-    for(int socket_fd : _sockets)
+    for(int socket_fd : m_sockets)
         close(socket_fd);
-    close(_socketSend);
+    close(m_socketSend);
 }

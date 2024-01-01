@@ -36,12 +36,12 @@ int main(int argc, char** argv){
     }
 
     // Instantiate plugins.
-    auto action = Action{system.value()};
+    auto action = Action{system.value()};   //创建匿名对象，然后给对象action赋值
     auto offboard = Offboard{system.value()};
     auto telemetry = Telemetry{system.value()};
 
-    std::vector<std::string> remoteIps={"192.168.100.102","192.168.100.101"};
-    std::vector<int> localPorts={10102,10101}; 
+    std::vector<std::string> remoteIps={"192.168.100.102"};
+    std::vector<int> localPorts={10102}; 
     UdpCommunicator udp("192.168.100.104",localPorts,remoteIps,10104);
     
     while (!telemetry.health_all_ok()) {
