@@ -123,7 +123,7 @@ void UdpCommunicator::WaitforAllIps(){
 
 // This is a member function that is only valid for the follower
 /*
-跟随者创建服务端tcp，接收到初始gps信息后并向领导者回复后，关闭并清理socket
+跟随者创建服务端tcp，接收初始gps信息并向领导者回复后，关闭并清理socket
 */
 void UdpCommunicator::WaitforOriginGps()
 {

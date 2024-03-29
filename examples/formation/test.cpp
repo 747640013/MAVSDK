@@ -15,7 +15,7 @@ void usage(const std::string& bin_name)
 }
 
 int main(int argc, char** argv){
-     if (argc != 2) {
+    if (argc != 2) {
         usage(argv[0]);
         return 1;
     }
@@ -61,6 +61,7 @@ int main(int argc, char** argv){
 
     udp.WaitforOriginGps();
     udp.calculate_bais(origin);
+
 
     Offboard::PositionNedYaw msg1;
     msg1 = {1,0,-3,0};
