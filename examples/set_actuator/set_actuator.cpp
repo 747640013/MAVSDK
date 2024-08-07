@@ -4,6 +4,8 @@
 
 #include <mavsdk/mavsdk.h>
 #include <mavsdk/plugins/action/action.h>
+#include <mavsdk/plugins/offboard/offboard.h>
+#include "mavsdk/core/log.h"
 #include <chrono>
 #include <cstdint>
 #include <iostream>
@@ -23,14 +25,14 @@ void usage(const std::string& bin_name)
 
 int main(int argc, char** argv)
 {
-    if (argc != 4) {
+    if (argc != 2) {
         usage(argv[0]);
         return 1;
     }
 
     const std::string connection_url = argv[1];
-    const int index = std::stod(argv[2]);
-    const float value = std::stof(argv[3]);
+    // const int index = std::stod(argv[2]);
+    // const float value = std::stof(argv[3]);
 
     Mavsdk mavsdk{Mavsdk::Configuration{Mavsdk::ComponentType::GroundStation}};
     const ConnectionResult connection_result = mavsdk.add_any_connection(connection_url);
@@ -40,7 +42,7 @@ int main(int argc, char** argv)
         return 1;
     }
 
-    std::cout << "Waiting to discover system...\n";
+    LogInfo() << "Waiting to discover system...";
     auto prom = std::promise<std::shared_ptr<System>>{};
     auto fut = prom.get_future();
 
@@ -50,7 +52,7 @@ int main(int argc, char** argv)
         auto system = mavsdk.systems().back();
 
         if (system->has_autopilot()) {
-            std::cout << "Discovered autopilot\n";
+            LogInfo() << "Discovered autopilot";
 
             // Unsubscribe again as we only want to find one system.
             mavsdk.unsubscribe_on_new_system(handle);
@@ -61,7 +63,7 @@ int main(int argc, char** argv)
     // We usually receive heartbeats at 1Hz, therefore we should find a
     // system after around 3 seconds max, surely.
     if (fut.wait_for(std::chrono::seconds(3)) == std::future_status::timeout) {
-        std::cerr << "No autopilot found, exiting.\n";
+        LogErr() << "No autopilot found, exiting.";
         return 1;
     }
 
@@ -70,12 +72,42 @@ int main(int argc, char** argv)
 
     // Instantiate plugins.
     auto action = Action{system};
+    auto offboard = Offboard{system}; 
 
-    std::cout << "Setting actuator...\n";
-    const Action::Result set_actuator_result = action.set_actuator(index, value);
+    const auto arm_result = action.arm();
+    if (arm_result != Action::Result::Success) {
+        LogErr() << "Arming failed: " << arm_result;
+        return 1;
+    }
+    LogWarn() << "Armed";
 
-    if (set_actuator_result != Action::Result::Success) {
-        std::cerr << "Setting actuator failed:" << set_actuator_result << '\n';
+    Offboard::ActuatorControl control_group{}; 
+    Offboard::ActuatorControlGroup flight_control{};
+
+    flight_control.controls.push_back(.1f);  // 
+    flight_control.controls.push_back(.0f);  // 
+    flight_control.controls.push_back(.0f);  // 
+    flight_control.controls.push_back(.0f);  // 
+
+    control_group.groups.push_back(flight_control);
+
+    /*先有数据才能进入offb*/
+    offboard.set_actuator_control(control_group);
+
+    /*需要先进入offb模式，进入offb必须有定位数据*/
+    Offboard::Result offboard_result = offboard.start();
+    if (offboard_result != Offboard::Result::Success) {
+        LogErr() << "Offboard start failed: " << offboard_result;
+        return false;
+    }
+    std::cout << "Offboard started\n";
+    
+
+    LogInfo() << "Setting actuator...";
+    const Offboard::Result set_actuator_result = offboard.set_actuator_control(control_group);
+
+    if (set_actuator_result != Offboard::Result::Success) {
+        LogErr() << "Setting actuator failed:" << set_actuator_result;
         return 1;
     }
 

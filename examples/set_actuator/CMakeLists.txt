@@ -8,12 +8,13 @@ project(set_actuator)
 add_executable(set_actuator
     set_actuator.cpp
 )
-
+target_include_directories(set_actuator PRIVATE /home/ubuntu/MAVSDK/src)
 find_package(MAVSDK REQUIRED)
 
 target_link_libraries(set_actuator
     MAVSDK::mavsdk
 )
+
 
 if(NOT MSVC)
     add_compile_options(set_actuator PRIVATE -Wall -Wextra)
